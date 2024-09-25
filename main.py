@@ -107,7 +107,8 @@ async def main() -> None:
                 
                 tareas_descarga = [
                     get_documento(async_client, semaforo, auth, row[0], row[1])
-                    for row in lista_documentos if row[0] == expediente
+                    for row in lista_documentos if row[0] == expediente and
+                    not Path(f"./descargas/{row[0]}/{row[1]}.pdf").exists()
                 ]
               
                 await asyncio.gather(*tqdm(tareas_descarga, desc=expediente))

@@ -19,7 +19,6 @@ DB_PASSW = config["GDEBA"]["DB_PASSW"]
 HOST = config["GDEBA"]["HOST"]
 PORT = config["GDEBA"]["PORT"]
 SERVICE_NAME = config["GDEBA"]["SERVICE_NAME"]
-CANTIDAD_TAREAS = int(config["GDEBA"]["CANTIDAD_TAREAS"])
 LIMITE_CONCURRENCIA = int(config["GDEBA"]["LIMITE_CONCURRENCIA"])
 
 async def get_token(user: str, passw: str) -> str:

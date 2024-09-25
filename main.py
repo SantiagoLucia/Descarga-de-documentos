@@ -7,7 +7,6 @@ import oracledb
 from pathlib import Path
 import configparser
 
-
 config = configparser.ConfigParser()
 config.read("config.ini")
 
@@ -23,26 +22,19 @@ SERVICE_NAME = config["GDEBA"]["SERVICE_NAME"]
 CANTIDAD_TAREAS = int(config["GDEBA"]["CANTIDAD_TAREAS"])
 LIMITE_CONCURRENCIA = int(config["GDEBA"]["LIMITE_CONCURRENCIA"])
 
-
 async def get_token(user: str, passw: str) -> str:
     """Obtiene el token de autenticación"""
     async with httpx.AsyncClient() as client:
-        try:
-            response = await client.post(TOKEN_URL, auth=(user, passw))
-            response.raise_for_status()
-            return response.text
-        except httpx.HTTPStatusError as http_err:
-            print(f"HTTP error occurred: {http_err}")
-        except Exception as err:
-            print(f"Other error occurred: {err}")
-
+        response = await client.post(TOKEN_URL, auth=(user, passw))
+        response.raise_for_status()
+        return response.text
 
 class BearerAuth(httpx.Auth):
     """Clase de autenticación Bearer"""
     def __init__(self, token):
         self.token = token
 
-    def auth_flow(self, request):
+    async def async_auth_flow(self, request):
         """Agrega el token de autenticación a la cabecera de la petición"""
         request.headers["authorization"] = f"Bearer {self.token}"
         yield request
@@ -51,14 +43,7 @@ class BearerAuth(httpx.Auth):
         """Actualiza el token de autenticación"""
         self.token = new_token
 
-
-async def get_documento(
-        client: zeep.AsyncClient, 
-        sem: asyncio.Semaphore, 
-        auth: BearerAuth, 
-        nro_exp: str, 
-        nro_doc: str
-        ) -> None:
+async def get_documento(client: zeep.AsyncClient, sem: asyncio.Semaphore, auth: BearerAuth, nro_exp: str, nro_doc: str) -> None:
     """Obtiene un documento de GDEBA"""
     async with sem:
         request = {
@@ -76,28 +61,20 @@ async def get_documento(
         with open(f"./descargas/{nro_exp}/{nro_doc}.pdf", "wb") as file:
             file.write(response)
 
-
 def consultar_documentos(userdb: str, passwdb: str, query: str) -> list:
     """Consulta documentos en base de datos Oracle"""
     try:
-        # Parámetros de conexión
         dsn = oracledb.makedsn(HOST, PORT, service_name=SERVICE_NAME)
-
-        # Crear la conexión
         with oracledb.connect(user=userdb, password=passwdb, dsn=dsn) as conn:        
             with conn.cursor() as cursor:
                 cursor.execute(query)
-                result = cursor.fetchall()
-                return result
-            
+                return cursor.fetchall()
     except oracledb.DatabaseError as e:
         error, = e.args
         print(f"Error de base de datos: {error.message}")
 
-
 async def main() -> None:
     """Función principal"""
-    
     query = """
     select  
     ee.tipo_documento || '-' || ee.anio || '-' || lpad(ee.numero,8,0) || '- -' || 
@@ -129,17 +106,12 @@ async def main() -> None:
                 directory_path = Path(f"descargas/{expediente}")
                 directory_path.mkdir(parents=True, exist_ok=True)    
                 
-                tareas_descarga = []
-                for row in lista_documentos:
-                    expediente_a_descargar = row[0]
-                    documento_a_descargar = row[1]
-                    if expediente_a_descargar == expediente:
-                        tareas_descarga.append(
-                            get_documento(async_client, semaforo, auth, expediente_a_descargar, documento_a_descargar)
-                            )
+                tareas_descarga = [
+                    get_documento(async_client, semaforo, auth, row[0], row[1])
+                    for row in lista_documentos if row[0] == expediente
+                ]
               
-                for tarea in tqdm.as_completed(tareas_descarga, desc=expediente):
-                    await tarea
+                await asyncio.gather(*tqdm(tareas_descarga, desc=expediente))
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -72,6 +72,19 @@ def consultar_documentos(userdb: str, passwdb: str, query: str) -> list:
         error, = e.args
         print(f"Error de base de datos: {error.message}")
 
+
+# Función para filtrar documentos que necesitan ser descargados
+def necesita_descarga(row: tuple, expediente: str) -> bool:
+    return row[0] == expediente and not Path(f"./descargas/{row[0]}/{row[1]}.pdf").exists()
+
+# Función para crear tareas de descarga
+def crear_tareas_descarga(async_client, semaforo, auth, documentos_a_descargar) -> list:
+    return [
+        get_documento(async_client, semaforo, auth, row[0], row[1])
+        for row in documentos_a_descargar
+    ]
+
+
 async def main() -> None:
     """Función principal"""
     query = """
@@ -105,11 +118,12 @@ async def main() -> None:
                 directory_path = Path(f"descargas/{expediente}")
                 directory_path.mkdir(parents=True, exist_ok=True)    
                 
-                tareas_descarga = [
-                    get_documento(async_client, semaforo, auth, row[0], row[1])
-                    for row in lista_documentos if row[0] == expediente and
-                    not Path(f"./descargas/{row[0]}/{row[1]}.pdf").exists()
-                ]
+                documentos_a_descargar = list(filter(
+                    lambda row: necesita_descarga(row, expediente),
+                    lista_documentos
+                ))
+
+                tareas_descarga = crear_tareas_descarga(async_client, semaforo, auth, documentos_a_descargar)
               
                 await asyncio.gather(*tqdm(tareas_descarga, desc=expediente))
 
